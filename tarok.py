@@ -291,12 +291,37 @@ def shrani_4_slike(lokacija,img1,img2,img3,img4):
     img1=merge_images(img1,img3)
     img1=merge_images(img1,img4)
     cv2.imwrite(lokacija ,img1)
+def shrani_2_slike(lokacija,img1,img2):
+    img1=merge_images(img1,img2)
+    cv2.imwrite(lokacija ,img1)
 
 def najdi_robove_1(img):
     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     median = cv2.medianBlur(gray,15)
-    edges = cv2.Canny(median,150,220,apertureSize = 3)
+    edges = cv2.Canny(median,150,200,apertureSize = 3)
+    #display_image3(gray,median,edges) 
     return edges
+
+def najdi_robove_2(img):
+    gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    median = cv2.medianBlur(gray,15)
+    thresh = cv2.adaptiveThreshold(median,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,11,2)
+    im2, contours,hierarchy=cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE )
+    cmax=0
+    for c in contours:
+        tmp=cv2.contourArea(c)
+        if (tmp>cmax):
+            cmax=tmp
+            cnt=c
+            
+    cv2.drawContours(img, contours, -1, (0,0,255))
+    x,y,w,h=cv2.boundingRect(cnt)
+    rect=cv2.minAreaRect(cnt)
+    box=cv2.boxPoints(rect)
+    box=np.int0(box)
+    cv2.drawContours(img, [box], 0, (255,0,0))
+    cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
+    return img,box
 
 def najdi_robove_nabor(img):
     # b=img_original[:,:,0]
@@ -363,7 +388,7 @@ def najdi_robove_nabor(img):
     edges = cv2.Canny(edges,150,220,apertureSize = 3)
     #edges=th3
     return edges
-    
+
 def najdi_karto_devel(imagename):
     img = cv2.imread(imagename) #, cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_COLOR)
     height, width, channels = img.shape 
@@ -377,7 +402,44 @@ def najdi_karto_devel(imagename):
         
     img_original=img.copy()
 
-  
+    img,pts=najdi_robove_2(img)
+    
+    #pts1 = np.float32(np.zeros((4,2)))
+    #pts1[0]=pts[3]
+    #pts1[1:4]=pts[0:3]
+    pts1 = np.float32(pts)
+    
+    for x, y in pts1:
+        cv2.circle(img,(x,y),4,(0,255,0),-1)
+    
+    print(imagename[:-6])
+    print(pts1)
+    #pts2 = np.float32([[0,0],[100,0],[0,200],[100,200]])
+    #pts2 = np.float32([[0,0],[0,200],[100,0],[100,200]])
+    if((pts1[0,0]-pts1[1,0])**2+(pts1[0,1]-pts1[1,1])**2)> \
+      ((pts1[2,0]-pts1[1,0])**2+(pts1[2,1]-pts1[1,1])**2): 
+       pts2 = np.float32([[0,200],[0,0],[100,0],[100,200]])
+    else:
+        pts2 = np.float32([[100,200],[0,200],[0,0],[100,0]])
+    M = cv2.getPerspectiveTransform(pts1,pts2)
+    icon = cv2.warpPerspective(img_original,M,(100,200))
+    shrani_2_slike('./debug_images/' + imagename[:-6] + ".jpg",img,icon)
+    return img,icon
+    
+def najdi_karto_devel2(imagename):
+    img = cv2.imread(imagename) #, cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_COLOR)
+    height, width, channels = img.shape 
+    if height>width:
+        img = cv2.resize(img,(400,800), interpolation = cv2.INTER_CUBIC)
+    else:
+        img = cv2.resize(img,(800,400), interpolation = cv2.INTER_CUBIC)
+        rows,cols,d = img.shape
+        M = cv2.getRotationMatrix2D((400,400),90,1)
+        img = cv2.warpAffine(img,M,(rows,cols))
+        
+    img_original=img.copy()
+
+    edges=najdi_robove_1(img)
 
     N=10
     for i in range(110,5,-3):
@@ -408,6 +470,7 @@ def najdi_karto_devel(imagename):
         print("Stevilo crt je premajhno! -> " + str(len(lines)))
 
     pts1,robovi=vogali(lines)
+    #pts1=najdi_robove_2(img)
     
     img=narisi_crte(img,vse_crte,(0,0,255),1)
     img=narisi_crte(img,lines,(0,255,255),2)
@@ -429,9 +492,9 @@ def najdi_karto_devel(imagename):
 
     #
 
-    th3=cv2.cvtColor(th3,cv2.COLOR_GRAY2RGB)
+    #th3=cv2.cvtColor(th3,cv2.COLOR_GRAY2RGB)
     edges=cv2.cvtColor(edges,cv2.COLOR_GRAY2RGB)
-    shrani_4_slike('./debug_images/' + imagename[:-6] + ".jpg",th3,edges,img,icon)
+    shrani_4_slike('./debug_images/' + imagename[:-6] + ".jpg",edges,edges,img,icon)
     return img,icon
 
 
@@ -443,7 +506,7 @@ if __name__ == "__main__":
     for file in os.listdir(directory):
         filename = os.fsdecode(file)
 #        filename = "pik_10_1.jpg"
-        if filename.endswith("_1.jpg"): # or filename.endswith("_2.jpg"): 
+        if filename.endswith("_2.jpg"): # or filename.endswith("_2.jpg"): 
             
             img,karta=najdi_karto_devel(filename)
             #display_image2(img,karta)

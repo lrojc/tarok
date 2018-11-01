@@ -4,6 +4,32 @@ import sys,os
 import matplotlib.pyplot as plt
 import pickle
 
+def detekcija_rdece(img_rgb):
+    img=img_rgb.copy()
+    img_hsv=cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    # lower mask (0-10)
+    lower_red = np.array([0,50,50])
+    upper_red = np.array([10,255,255])
+    mask0 = cv2.inRange(img_hsv, lower_red, upper_red)
+    
+    # upper mask (170-180)
+    lower_red = np.array([170,50,50])
+    upper_red = np.array([180,255,255])
+    mask1 = cv2.inRange(img_hsv, lower_red, upper_red)
+        
+    # join my masks
+    mask = mask0+mask1
+    
+    # set my output img to zero everywhere except my mask
+    output_img = img.copy()
+    output_img[np.where(mask==0)] = 0
+        
+    # or your HSV image, which I *believe* is what you want
+    #output_hsv = img_hsv.copy()
+    #output_hsv[np.where(mask==0)] = 0
+    return output_rgb
+
 def _plot_image_correct_color_(img1):
     if len(img1.shape)<3:
         plt.imshow(img1,cmap='gray')
@@ -309,9 +335,9 @@ def najdi_robove_1(img):
 
 def najdi_robove_2(img):
     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    median = cv2.medianBlur(gray,15)
-    thresh = cv2.adaptiveThreshold(median,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,11,2)
-    thresh = cv2.medianBlur(thresh,5)
+    median = cv2.medianBlur(gray,11)
+    thresh = cv2.adaptiveThreshold(median,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,15,5)
+    thresh = cv2.medianBlur(thresh,3)
     kernel = np.ones((5,5),np.uint8)
     thresh=cv2.dilate(thresh,kernel,iterations = 1)
     thresh=cv2.erode(thresh,kernel,iterations = 1)
@@ -321,7 +347,7 @@ def najdi_robove_2(img):
     for c in contours:
 
         tmp=cv2.contourArea(c)
-        if tmp>1000:
+        if tmp>400:
             img_tmp=img.copy()
             epsilon=0.003*cv2.arcLength(c,True)
             approx=cv2.approxPolyDP(c,epsilon,True)
@@ -344,7 +370,7 @@ def najdi_robove_2(img):
 
             #display_image(img_tmp)
     
-            if (tmp>cmax) and area_coeff<0.1: # mora biti tudi vecji od 0
+            if (tmp>cmax) and area_coeff<0.15: # mora biti tudi vecji od 0
                 cmax=tmp
                 cnt=c
             else:
@@ -355,16 +381,23 @@ def najdi_robove_2(img):
     gray[:]=np.uint8(0)
     #epsilon=0.1*cv2.arcLength(cnt,True)
     #approx=cv2.approxPolyDP(cnt,epsilon,True)
-    cv2.drawContours(gray, cnt, -1, 255)
-    
-    x,y,w,h=cv2.boundingRect(cnt)
-    rect=cv2.minAreaRect(cnt)
-    box=cv2.boxPoints(rect)
-    box=np.int0(box)
-    cv2.drawContours(img, [box], 0, (255,0,0))
-    cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
+    try:
+        cv2.drawContours(gray, cnt, -1, 255)
+        x,y,w,h=cv2.boundingRect(cnt)
+        rect=cv2.minAreaRect(cnt)
+        box=cv2.boxPoints(rect)
+        box=np.int0(box)
+        cv2.drawContours(img, [box], 0, (255,0,0))
+        cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
+        return img,box,gray,thresh
 
-    return img,box,gray,thresh
+    except UnboundLocalError:
+        print(tmp)
+        display_image3(img,gray,thresh)
+        return img,box,gray,thresh
+
+        
+
 
 def najdi_karto_devel(directory,imagename):
     
@@ -785,8 +818,7 @@ def template_matching_siva(directory,ends,maska,maska_imena):
                     print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tbarva" + detekcija)
             else:
                 print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\ttarok" + detekcija)
-
-def template_matching_siva_z_znaki(directory,ends,maska,maska_imena):
+def template_matching_znaki(directory,ends,maska,maska_imena):
     img = cv2.imread('maska.jpg',0)
     img_mask=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
     max_val=np.max(img[img_mask>0])
@@ -799,35 +831,40 @@ def template_matching_siva_z_znaki(directory,ends,maska,maska_imena):
         filename = os.fsdecode(file)
         if filename.endswith(ends):
             template = cv2.imread(directory + filename,0)
-            template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
+            template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+                                                cv2.THRESH_BINARY,17,2)
             max_val=np.max(template[template_mask>0])
             svetlost_karte=(template_mask>0).sum()/template_mask.size
-            template[template_mask>0]=np.uint8(max_val)
-            template = cv2.medianBlur(template,3)
-            method = eval(meth)
-            w, h = template.shape[::-1]
-                
-            res = cv2.matchTemplate(img,template,method)
-            template2=cv2.flip(template,-1) 
-            res2 = cv2.matchTemplate(img,template2,method)
             
-            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                if (np.min(res2[0])<np.min(res[0])):
-                    res=res2
+            if svetlost_karte>0.7:
+                det_ime=prepoznaj_platlc(template)
             else:
-                if (np.max(res2[0])>np.max(res[0])):
-                    res=res2
+                template[template_mask>0]=np.uint8(max_val)
+                template = cv2.medianBlur(template,3)
+                method = eval(meth)
+                w, h = template.shape[::-1]
+                
+                res = cv2.matchTemplate(img,template,method)
+                template2=cv2.flip(template,-1) 
+                res2 = cv2.matchTemplate(img,template2,method)
+            
+                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                    if (np.min(res2[0])<np.min(res[0])):
+                        res=res2
+                else:
+                    if (np.max(res2[0])>np.max(res[0])):
+                        res=res2
 
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                top_left = min_loc
-            else:
-                top_left = max_loc
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-            cv2.rectangle(img,top_left, bottom_right, 255, 2)
-            indeks=np.int32(round(top_left[0]/w))
-            det_ime=maska_imena[indeks]
-
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                    top_left = min_loc
+                else:
+                    top_left = max_loc
+                bottom_right = (top_left[0] + w, top_left[1] + h)
+                cv2.rectangle(img,top_left, bottom_right, 255, 2)
+                indeks=np.int32(round(top_left[0]/w))
+                det_ime=maska_imena[indeks]
+                
             detekcija="\tOK"
             if det_ime[:-2] not in filename:
                 detekcija= "\tdetektiran kot:\t" + det_ime
@@ -843,18 +880,20 @@ def template_matching_siva_z_znaki(directory,ends,maska,maska_imena):
                     _plot_image_correct_color_(template2)
                 else:
                     _plot_image_correct_color_(template)
-#                plt.title('Detected Point'),
+                #                plt.title('Detected Point'),
                 plt.xticks([]), plt.yticks([])
                 plt.subplots_adjust(left=None, bottom=0.07, right=None, top=0.97, wspace=None, hspace=0.35)
                 plt.show()
 
             if "tarok" not in det_ime:
                 if svetlost_karte>0.7:
-                    print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tplatelc" + detekcija)
+                    #print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tplatelc" + detekcija)
+                    print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "platelc" + detekcija)
                 else:
-                    print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tbarva" + detekcija)
+                    print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "barva" + detekcija)
             else:
-                print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\ttarok" + detekcija)
+                print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "tarok" + detekcija)
+
 
 def pripravi_znake():
     ikone=['src_1_1.jpg','kara_1_1.jpg','pik_9_1.jpg','kriz_9_1.jpg']
@@ -885,28 +924,116 @@ def pripravi_ikone_in_masko():
     mask_name="maska.jpg"
 
     img,imena=naredi_masko(directory,ends_with,mask_name)
-    f = open('store.pckl', 'wb')
+    f = open(mask_name[:-4] + ".pckl", 'wb')
     pickle.dump(imena, f)
     f.close()
 
-    ikone_dir='./ikone/'
+    directory = './set_luka_2/'
+    ikone_dir='./ikone2/'
     naredi_ikone(directory,ends_with,ikone_dir)
     ends_with="_2.jpg"
     naredi_ikone(directory,ends_with,ikone_dir)
+    ends_with="_3.jpg"
+    naredi_ikone(directory,ends_with,ikone_dir)
+
+#    directory = './set_luka_1/'
     
 def testiraj_masko():
-    ikone_dir='./ikone/'
-    ends_with="_2.jpg"
+    ikone_dir='./ikone2/'
+    ends_with="_1.jpg"
     mask_name="maska.jpg"
 
-    f = open('store.pckl', 'rb')
+    f = open(mask_name[:-4] + ".pckl", 'rb')
     imena = pickle.load(f)
     f.close()
 
     mask_img = cv2.imread(mask_name)
-    template_matching_siva(ikone_dir,ends_with,mask_img,imena)
+    template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
+    ends_with="_2.jpg"
+    template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
+    ends_with="_3.jpg"
+    template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
+
+def prepoznaj_platlc(img_gray):
+    simboli=['src.jpg','kara.jpg','pik.jpg','kriz.jpg']
+    img_rgb=cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
+    odstotek_crne=np.sum(img_gray<60)/img_gray.size
+    # print(platli[i] + " Odstotek crne:" + str(odstotek_crne))
+    # print("Odstotek crne:" + str(odstotek_crne))
+    
+    if odstotek_crne<0.02:
+        barve=[0,1]
+    else:
+        barve=[2,3]
+        
+    max_val=0
+    for i in barve:
+        template_kandidat=cv2.imread('./' + simboli[i],0)
+        res = cv2.matchTemplate(img_gray,template_kandidat,cv2.TM_CCOEFF)
+        min_val1, max_val1, min_loc1, max_loc1 = cv2.minMaxLoc(res)
+        template_kandidat=cv2.flip(template_kandidat,-1) 
+        res = cv2.matchTemplate(img_gray,template_kandidat,cv2.TM_CCOEFF)
+        min_val2, max_val2, min_loc2, max_loc2 = cv2.minMaxLoc(res)
+        if max_val1<max_val2:
+            max_val1=max_val2
+        if max_val<max_val1:
+            max_val=max_val1
+            template=template_kandidat
+            simbol=simboli[i]
+            
+    w, h = template.shape[::-1]
+    threshold = 0.93
+    if(barve[0]==0):
+        if "src" in simbol:
+            vel_enega=w*h*1.15
+        else:
+            vel_enega=w*h*1.3
+    else:
+        if "pik" in simbol:
+            vel_enega=w*h*1.1
+        else:
+            vel_enega=w*h*1.05
+            
+    g=img_rgb[:,:,1]
+    g[g==255]=254
+    res = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
+    template=cv2.flip(template,-1) 
+    res2 = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
+    
+    loc = np.where( res >= threshold)
+    for pt in zip(*loc[::-1]):
+        cv2.rectangle(img_rgb, pt, (pt[0] + w, pt[1] + h), (0,255,0),  cv2.FILLED)
+        
+    loc = np.where( res2 >= threshold)
+    for pt in zip(*loc[::-1]):
+        cv2.rectangle(img_rgb, pt, (pt[0] + w, pt[1] + h), (0,255,0),  cv2.FILLED)
+        
+    g=img_rgb[:,:,1]
+    vsota=np.sum(g==255)
+    prepoznana_karta=(simbol[:-4] + "_" + str(int(round(vsota/vel_enega))))
+    #print(prepoznana_karta)
+    return prepoznana_karta
+
+def testiraj_znake():
+    platli=['src_1_1.jpg','kara_1_1.jpg','pik_7_1.jpg','kriz_7_1.jpg',
+            'src_2_1.jpg','kara_2_1.jpg','pik_8_1.jpg','kriz_8_1.jpg',
+            'src_3_1.jpg','kara_3_1.jpg','pik_9_1.jpg','kriz_9_1.jpg',
+            'src_4_1.jpg','kara_4_1.jpg','pik_10_1.jpg','kriz_10_1.jpg',
+            'src_1_2.jpg','kara_1_2.jpg','pik_7_2.jpg','kriz_7_2.jpg',
+            'src_2_2.jpg','kara_2_2.jpg','pik_8_2.jpg','kriz_8_2.jpg',
+            'src_3_2.jpg','kara_3_2.jpg','pik_9_2.jpg','kriz_9_2.jpg',
+            'src_4_2.jpg','kara_4_2.jpg','pik_10_2.jpg','kriz_10_2.jpg']
+            
+    for i in range(0,len(platli)):
+        filename="./ikone/" + platli[i]
+        img_rgb=cv2.imread(filename)
+        prepoznan=prepoznaj_platlc(img_rgb)
+        print(filename + "\t" + prepoznan)
+        
+        
 
 if __name__ == "__main__":
     #pripravi_ikone_in_masko()
-    #testiraj_masko()
-
+    testiraj_masko()
+    #testiraj_znake()
+    

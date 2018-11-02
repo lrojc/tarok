@@ -510,16 +510,15 @@ def naredi_masko(directory,ends,dest):
         filename = os.fsdecode(file)
         if filename.endswith(ends): # or filename.endswith("_2.jpg"): 
             img,karta=najdi_karto_devel(directory , filename)
-            if i==0:
-                karta1=karta.copy()
-            else:
-                karta1=merge_images(karta1,karta)
-            names[i]=filename[:-4]
-            i+=1
-            #break
-            continue
-        else:
-            continue
+            if "tarok" in filename or "kralj" in filename or "dama" in filename or "kaval" in filename or "pob" in filename:
+                names[i]=filename[:-4]
+                if i==0:
+                    karta1=karta.copy()
+                else:
+                    karta1=merge_images(karta1,karta)
+                i+=1
+
+
     cv2.imwrite(dest ,karta1)
     return img,names
 def naredi_ikone(directory,ends,dst_dir):
@@ -946,13 +945,13 @@ def testiraj_masko():
     f = open(mask_name[:-4] + ".pckl", 'rb')
     imena = pickle.load(f)
     f.close()
-
+   
     mask_img = cv2.imread(mask_name)
     template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
-    ends_with="_2.jpg"
-    template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
-    ends_with="_3.jpg"
-    template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
+    #ends_with="_2.jpg"
+    #template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
+    #ends_with="_3.jpg"
+    #template_matching_znaki(ikone_dir,ends_with,mask_img,imena)
 
 def prepoznaj_platlc(img_gray):
     simboli=['src.jpg','kara.jpg','pik.jpg','kriz.jpg']

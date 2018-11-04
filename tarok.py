@@ -3,6 +3,7 @@ import numpy as np
 import sys,os
 import matplotlib.pyplot as plt
 import pickle
+import scipy.signal
 
 def detekcija_rdece(img_rgb):
     img=img_rgb.copy()
@@ -396,7 +397,81 @@ def najdi_robove_2(img):
         display_image3(img,gray,thresh)
         return img,box,gray,thresh
 
-        
+
+def poravnaj_ikono(img):
+     # Poporavi najdeno
+    #img = cv2.imread(directory + filename)
+    img_gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    #img_gray2[img_gray2<20]=20
+    #img_gray=cv2.GaussianBlur(img_gray2,(5,5),0)
+    #img_gray=cv2.normalize(img_gray2, 0, 255, cv2.NORM_MINMAX)
+    
+    #display_image2(img_gray,img_gray2)
+    
+    # Prepare the kernels
+    #a1 = np.matrix([1, 1, 1]) #Prewitt
+    a1 = np.matrix([1, 1, 1, 1, 1]) #Prewitt 
+    #a1 = np.matrix([1, 2, 1]) #Sobel
+    #a1 = np.matrix([3, 10, 3]) #Scharr
+    #a2 = np.matrix([-1, 0, 1])
+    a2 = np.matrix([-1, -1, 0, 1, 1])
+    Kx = a1.T * a2
+    Ky = a2.T * a1
+    K=np.sum(np.abs(Kx))
+
+    # Apply the Sobel operator
+    Gx = scipy.signal.convolve2d(img_gray, Kx, "same", "symm")
+    Gy = scipy.signal.convolve2d(img_gray, Ky, "same", "symm")
+
+    GxM=np.zeros_like(img_gray) # desni rob
+    GyM=np.zeros_like(img_gray) # spodnji rob
+    Gxm=np.zeros_like(img_gray) # levi rob
+    Gym=np.zeros_like(img_gray) # zgornji rob
+    
+    GxM[Gx>K*25]=1
+    GyM[Gy>K*25]=1
+    Gxm[Gx<-K*25]=1
+    Gym[Gy<-K*25]=1
+    #
+    # 
+    nova_visina=200
+    nova_sirina=100
+    try:
+        desne = cv2.HoughLines(GxM,2,np.pi/180,40)[0,0] #h/2)
+        spodnje = cv2.HoughLines(GyM,2,np.pi/180,40)[0,0] #w/2)
+        leve = cv2.HoughLines(Gxm,2,np.pi/180,40)[0,0] #h/2)
+        zgornje = cv2.HoughLines(Gym,2,np.pi/180,40)[0,0] #w/2)
+    except TypeError:
+        display_image3(img_gray,Gx,Gy)
+        display_image4(GxM,GyM,Gxm,Gym)
+        return img
+
+    # print(desne)
+    # print(spodnje)
+    # print(leve)
+    # print(zgornje)
+
+    x0,y0 = presek(  leve, zgornje)
+    x1,y1 = presek( desne, zgornje)
+    x2,y2 = presek(  leve, spodnje)
+    x3,y3 = presek( desne, spodnje)
+    #lines=np.squeeze(desne)
+    #np.append(lines,np.squeeze(spodnje))
+    #print(lines)
+    #np.append(lines,np.squeeze(leve))
+    #print(lines)
+    #np.append(lines,np.squeeze(zgornje))
+    #print(lines)
+    #pts1,edg=vogali(lines)
+    
+    pts1 = np.float32( [[x0,y0],[x1,y1],        [x2,y2],        [x3,y3]])
+    pts2 = np.float32( [[0,0],  [nova_sirina,0],[0,nova_visina],[nova_sirina,nova_visina]])
+    M = cv2.getPerspectiveTransform(pts1,pts2)
+    icon = cv2.warpPerspective(img,M,(nova_sirina,nova_visina))
+
+    #display_image2(img,icon)
+    #
+    return icon
 
 
 def najdi_karto_devel(directory,imagename):
@@ -429,10 +504,11 @@ def najdi_karto_devel(directory,imagename):
     else:
         pts2 = np.float32([[nova_sirina,nova_visina],[0,nova_visina],[0,0],[nova_sirina,0]])
     M = cv2.getPerspectiveTransform(pts1,pts2)
-    icon = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
+    icon2 = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
     edges=cv2.cvtColor(edges,cv2.COLOR_GRAY2RGB)
     thresh=cv2.cvtColor(thresh,cv2.COLOR_GRAY2RGB)
-    shrani_4_slike('./debug_images/' + imagename[:-4] + ".jpg",thresh,edges,img,icon)
+    icon=poravnaj_ikono(icon2)
+    shrani_4_slike('./debug_images/' + imagename[:-4] + ".jpg",edges,img,icon2,icon)
     return img,icon
 
 def najdi_karto_devel2(directory,imagename):
@@ -479,7 +555,7 @@ def najdi_karto_devel2(directory,imagename):
     
     if len(lines)<N:
         print("Stevilo crt je premajhno! -> " + str(len(lines)))
-
+        
     pts1,robovi=vogali(lines)
     #pts1=najdi_robove_2(img)
     
@@ -543,7 +619,7 @@ def empty_run():
     for file in os.listdir(directory):
         filename = os.fsdecode(file)
 #        filename = "pik_10_1.jpg"
-        if filename.endswith("_1.jpg") or filename.endswith("_2.jpg"): 
+        if filename.endswith("_1.jpg") or filename.endswith("_2.jpg"):
             print(filename)
             img,karta=najdi_karto_devel(directory , filename)
             #display_image2(img,karta)
@@ -553,6 +629,19 @@ def empty_run():
             continue
         else:
             continue
+
+def empty_run2():
+    directory = './ikone/'
+    i=0;
+    names={}
+    for file in os.listdir(directory):
+        filename = os.fsdecode(file)
+#        filename = "pik_10_1.jpg"
+        if filename.endswith("_1.jpg"): # or filename.endswith("_2.jpg"): 
+            print(filename)
+            # Poporavi najdeno
+            img = cv2.imread(directory + filename)
+            #poravnaj_ikono(img)
 
 def template_matching(directory,ends,maska,maska_imena):
     barva=['blue','green','red']
@@ -647,176 +736,6 @@ def template_matching(directory,ends,maska,maska_imena):
                 plt.show()
             else:
                 print(filename + "\t vsota \tOK")
-def template_matching_simple(directory,ends,maska,maska_imena):
-    barva=['blue','green','red']
-    #img = cv2.imread('maska.jpg',0)
-    #img=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
-    img=maska
-    
-    img2 = img.copy()
-    # All the 6 methods for comparison in a list
-    methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
-           'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-    #for meth in methods:
-    meth=methods[5]
-    for file in os.listdir(directory):
-        filename = os.fsdecode(file)
-        if filename.endswith(ends): # or filename.endswith("_2.jpg"):
-            template3 = cv2.imread(directory + filename)
-            res3=np.zeros((3,5301))
-            #display_image3(template3[:,:,0],template3[:,:,1],template3[:,:,2])
-            method = eval(meth)
-            for i in [0,1,2]:
-
-                img=cv2.adaptiveThreshold(img2[:,:,i],255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
-                img = cv2.medianBlur(img,7)
-                template=template3[:,:,i]
-                template=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
-                template = cv2.medianBlur(template,7)
-                w, h = template.shape[::-1]
-
-                
-                # Apply template Matching
-                res = cv2.matchTemplate(img,template,method)
-                template2=cv2.flip(template,-1) 
-                res2 = cv2.matchTemplate(img,template2,method)
-                #print(res[0].shape)
-
-                if (np.min(res2[0])<np.min(res[0])):
-                #if (np.max(res2[0])>np.max(res[0])):
-                    res=res2
-                    print("obrnjen")
-                    
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]: # If the method is TM_SQDIFF or TM_SQDIFF_NORMED, take minimum
-                    top_left = min_loc
-                else:
-                    top_left = max_loc
-                bottom_right = (top_left[0] + w, top_left[1] + h)
-                cv2.rectangle(img,top_left, bottom_right, 255, 2)
-
-                indeks=np.int32(round(top_left[0]/w))
-                det_ime=maska_imena[indeks]
-                
-                if det_ime not in filename:
-                    print(filename + "\t" + barva[i] + "\tdetektiran kot:\t" + maska_imena[indeks])
-
-                    plt.subplot(2,1,1),plt.plot(res[0]), plt.title(filename + " " + barva[i]) #, plt.xticks([]), plt.yticks([])
-                    plt.subplot(2,2,3),plt.imshow(img),plt.axis([top_left[0],top_left[0]+w,top_left[1],top_left[1]+h])
-                    plt.subplot(2,2,4)
-                    if np.sum(res-res2)==0:
-                        plt.imshow(template2)
-                    else:
-                        plt.imshow(template)
-                    
-                    #plt.axis([top_left[0],top_left[0]+w,top_left[1],top_left[1]+h])
-                    plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
-                    #plt.suptitle(meth)
-                    plt.show()
-                else:
-                    print(filename + "\t" + barva[i] + "\tOK")
-
-                res3[i,:]=res
-                
-            res=np.reshape(res3, (3,-1))
-            res=np.sum(res,0)
-            res=np.array([res])
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]: # If the method is TM_SQDIFF or TM_SQDIFF_NORMED, take minimum
-                top_left = min_loc
-            else:
-                top_left = max_loc
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-            cv2.rectangle(img,top_left, bottom_right, 255, 2)
-
-            indeks=np.int32(round(top_left[0]/w))
-            det_ime=maska_imena[indeks]
-            
-            if det_ime not in filename:
-                print(filename + "\tvsota\tdetektiran kot:\t" + maska_imena[indeks])
-                #print(min_val, max_val, min_loc, max_loc)
-                plt.subplot(2,1,1),plt.plot(res[0]), plt.title(filename + " vsota") #, plt.xticks([]), plt.yticks([])
-                plt.subplot(2,2,1),plt.imshow(img2),plt.axis([top_left[0],top_left[0]+w,top_left[1],top_left[1]+h])
-                plt.subplot(2,2,2)
-                if np.sum(res-res2)==0:
-                    plt.imshow(template2)
-                else:
-                    plt.imshow(template)
-                plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
-                #plt.suptitle(meth)
-                plt.show()
-            else:
-                print(filename + "\t vsota \tOK")
-
-def template_matching_siva(directory,ends,maska,maska_imena):
-    img = cv2.imread('maska.jpg',0)
-    img_mask=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
-    max_val=np.max(img[img_mask>0])
-    img[img_mask>0]=np.uint8(max_val)
-    img2 = img.copy()
-    methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
-           'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-    meth=methods[4]
-    for file in os.listdir(directory):
-        filename = os.fsdecode(file)
-        if filename.endswith(ends):
-            template = cv2.imread(directory + filename,0)
-            template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
-            max_val=np.max(template[template_mask>0])
-            svetlost_karte=(template_mask>0).sum()/template_mask.size
-            template[template_mask>0]=np.uint8(max_val)
-            template = cv2.medianBlur(template,3)
-            method = eval(meth)
-            w, h = template.shape[::-1]
-                
-            res = cv2.matchTemplate(img,template,method)
-            template2=cv2.flip(template,-1) 
-            res2 = cv2.matchTemplate(img,template2,method)
-            
-            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                if (np.min(res2[0])<np.min(res[0])):
-                    res=res2
-            else:
-                if (np.max(res2[0])>np.max(res[0])):
-                    res=res2
-
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                top_left = min_loc
-            else:
-                top_left = max_loc
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-            cv2.rectangle(img,top_left, bottom_right, 255, 2)
-            indeks=np.int32(round(top_left[0]/w))
-            det_ime=maska_imena[indeks]
-
-            detekcija="\tOK"
-            if det_ime[:-2] not in filename:
-                detekcija= "\tdetektiran kot:\t" + det_ime
-                
-                plt.subplot(2,1,1),plt.plot(res[0])
-                plt.subplot(2,2,3), _plot_image_correct_color_(img)
-                plt.xticks(), plt.yticks()
-                plt.axis([top_left[0],top_left[0]+w,top_left[1]+h,top_left[1]])
-                plt.title(det_ime + " siva") #, plt.xticks([]), plt.yticks([])
-                plt.subplot(2,2,4)
-                plt.title(filename + " siva") #, plt.xticks([]), plt.yticks([])
-                if np.sum(res-res2)==0:
-                    _plot_image_correct_color_(template2)
-                else:
-                    _plot_image_correct_color_(template)
-#                plt.title('Detected Point'),
-                plt.xticks([]), plt.yticks([])
-                plt.subplots_adjust(left=None, bottom=0.07, right=None, top=0.97, wspace=None, hspace=0.35)
-                plt.show()
-
-            if "tarok" not in det_ime:
-                if svetlost_karte>0.7:
-                    print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tplatelc" + detekcija)
-                else:
-                    print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tbarva" + detekcija)
-            else:
-                print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\ttarok" + detekcija)
 def template_matching_znaki(directory,ends,maska,maska_imena):
     img = cv2.imread('maska.jpg',0)
     img_mask=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
@@ -837,6 +756,7 @@ def template_matching_znaki(directory,ends,maska,maska_imena):
             
             if svetlost_karte>0.7:
                 det_ime=prepoznaj_platlc(template)
+                det_ime=det_ime + "_?"
             else:
                 template[template_mask>0]=np.uint8(max_val)
                 template = cv2.medianBlur(template,3)
@@ -862,11 +782,12 @@ def template_matching_znaki(directory,ends,maska,maska_imena):
                 bottom_right = (top_left[0] + w, top_left[1] + h)
                 cv2.rectangle(img,top_left, bottom_right, 255, 2)
                 indeks=np.int32(round(top_left[0]/w))
-                det_ime=maska_imena[indeks]
+                det_ime=maska_imena[indeks][:-2]
                 
             detekcija="\tOK"
             if det_ime[:-2] not in filename:
                 detekcija= "\tdetektiran kot:\t" + det_ime
+            if svetlost_karte<=0.7 and det_ime[:-2] not in filename:
                 
                 plt.subplot(2,1,1),plt.plot(res[0])
                 plt.subplot(2,2,3), _plot_image_correct_color_(img)
@@ -893,6 +814,92 @@ def template_matching_znaki(directory,ends,maska,maska_imena):
             else:
                 print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "tarok" + detekcija)
 
+def template_matching_znaki_hsv(directory,ends,maska,maska_imena):
+    img_rgb = cv2.imread('maska.jpg')
+    img = cv2.cvtColor(img_rgb,cv2.COLOR_BGR2GRAY)
+    img2 = img.copy()
+    img_hsv = cv2.cvtColor(img_rgb,cv2.COLOR_BGR2HSV)
+    # img=img_hsv[:,:,2]  #img nastavljen na VALUE.
+    img_mask=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
+    #max_val=np.max(img[img_mask>0])
+    #img[img_mask>0]=np.uint8(max_val)
+    img=img_hsv[:,:,0]  #img sprmenjen na HUE!!!!!!
+    img2 = img.copy()
+    methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+           'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+    meth=methods[4]
+    for file in os.listdir(directory):
+        filename = os.fsdecode(file)
+        if filename.endswith(ends):
+            img3 = img2.copy()
+            template_rgb = cv2.imread(directory + filename)
+            template_hsv = cv2.cvtColor(template_rgb,cv2.COLOR_BGR2HSV)
+            template = cv2.cvtColor(template_rgb,cv2.COLOR_BGR2GRAY)
+            template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+                                                 cv2.THRESH_BINARY,17,2)
+            max_val=np.max(template[template_mask>0])
+            svetlost_karte=(template_mask>0).sum()/template_mask.size
+            # display_image(template)
+            if svetlost_karte>0.7:
+                det_ime=prepoznaj_platlc(template)
+                det_ime=det_ime + "xx"
+            else:
+                template = template_hsv[:,:,0]      #template spremenjen v HUE!!!!!!!
+                #template[template_mask>0]=np.uint8(max_val)
+                #template = cv2.medianBlur(template,3)
+                method = eval(meth)
+                w, h = template.shape[::-1]
+                res = cv2.matchTemplate(img,template,method)
+                template2=cv2.flip(template,-1) 
+                res2 = cv2.matchTemplate(img,template2,method)
+            
+                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                    if (np.min(res2[0])<np.min(res[0])):
+                        res=res2
+                else:
+                    if (np.max(res2[0])>np.max(res[0])):
+                        res=res
+
+                        
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                    top_left = min_loc
+                else:
+                    top_left = max_loc
+                bottom_right = (top_left[0] + w, top_left[1] + h)
+
+                cv2.rectangle(img3,top_left, bottom_right, 255, 2)
+                    
+                indeks=np.int32(round(top_left[0]/w))
+                det_ime=maska_imena[indeks]
+                
+            detekcija="\tOK"
+            if (det_ime[:-2] not in filename) and (svetlost_karte<=0.7):
+                detekcija= "\tdetektiran kot:\t" + det_ime
+                
+                plt.subplot(2,1,1),plt.plot(res[0])
+                plt.subplot(2,2,3), _plot_image_correct_color_(img3)
+                plt.xticks(), plt.yticks()
+                plt.axis([top_left[0],top_left[0]+w,top_left[1]+h,top_left[1]])
+                plt.title("Detektirano ime: " + det_ime )
+                plt.subplot(2,2,4)
+                plt.title(filename)
+                if np.sum(res-res2)==0:
+                    _plot_image_correct_color_(template2)
+                else:
+                    _plot_image_correct_color_(template)
+                plt.xticks([]), plt.yticks([])
+                plt.subplots_adjust(left=None, bottom=0.07, right=None, top=0.97, wspace=None, hspace=0.35)
+                plt.show()
+
+            if "tarok" not in det_ime:
+                if svetlost_karte>0.7:
+                    #print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tplatelc" + detekcija)
+                    print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "platelc" + detekcija)
+                else:
+                    print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "barva" + detekcija)
+            else:
+                print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "tarok" + detekcija)
 
 def pripravi_znake():
     ikone=['src_1_1.jpg','kara_1_1.jpg','pik_9_1.jpg','kriz_9_1.jpg']
@@ -1033,6 +1040,6 @@ def testiraj_znake():
 
 if __name__ == "__main__":
     #pripravi_ikone_in_masko()
-    testiraj_masko()
+    #testiraj_masko()
     #testiraj_znake()
-    
+    empty_run()

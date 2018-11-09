@@ -11,6 +11,7 @@ import qimage2ndarray
 import random
 import numpy as np
 import time
+import cv2
 
 class MainWindow(QtWidgets.QMainWindow):
 
@@ -18,8 +19,11 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-                
-        self.generiraj_seznam()
+        self.TEngine=TarokEngine()
+        #self.generiraj_seznam()
+        self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
+        self.fgbg = cv2.createBackgroundSubtractorMOG2()
+        
     
     @pyqtSlot(int)
     def spremeni_sirino(self, i):
@@ -30,7 +34,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def generiraj_seznam(self):
         directory=self.ui.ime_direktorija.text()
         for filename in os.listdir(directory):
-            if filename.endswith(".jpg"): 
+            if filename.endswith(self.ui.ending_line.text()): 
                 self.ui.listWidget.addItem(filename)
 
         self.ui.listWidget.setCurrentRow(0)
@@ -67,7 +71,11 @@ class MainWindow(QtWidgets.QMainWindow):
             #self.perform_analysis() #to sedaj upravlja listWidget
 
     def popravi_sirino(self,label,img):
-        h,w,c=img.shape
+        if len(img.shape)<3:
+            h,w=img.shape
+        else:
+            h,w,c=img.shape
+            
         qh=label.maximumHeight()
         qw=int(w/h*qh)
         label.setMaximumWidth(qw)
@@ -78,6 +86,9 @@ class MainWindow(QtWidgets.QMainWindow):
         filename=self.ui.listWidget.currentItem().text()
 
         img,karta=najdi_karto_devel(directory , filename)
+        ime=template_matching_video(karta)
+        self.ui.ime_karte.setText(ime)
+        
         self.popravi_sirino(self.ui.label_image_left,img)
         self.display_image_on_label(self.ui.label_image_left,img)
         self.display_image_on_label(self.ui.label_image_right,karta)
@@ -85,13 +96,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def display_image_on_label(self,label,frame):
         # https://gist.github.com/bsdnoobz/8464000
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if len(frame.shape)<3:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+        else:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = qimage2ndarray.array2qimage(frame)
         label.setPixmap(QPixmap.fromImage(image))
 
     @pyqtSlot()
     def stop_timer(self):
         self.timer.stop()
+
+    @pyqtSlot()
+    def start_timer(self):
+        interval=int(self.ui.sleep_time.text())
+        print(interval)
+        self.timer.setInterval(interval)
+        self.timer.start()
         
     @pyqtSlot()
     def setup_camera(self):
@@ -103,28 +124,54 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.display_video_stream)
-        self.timer.start(100)
+        self.start_timer()
 
+    @pyqtSlot()
     def display_video_stream(self):
         """Read frame from camera and repaint QLabel widget.
         """
         start = time.time()
-        self.capture.grab(); self.capture.grab() ; self.capture.grab()
+        self.capture.grab(); # self.capture.grab() ; self.capture.grab()
+        #self.capture.grab(); self.capture.grab() ; self.capture.grab()
         
-        _, frame = self.capture.retrieve()
-        print(self.capture.get(cv2.CAP_PROP_POS_MSEC))
+        retv, frame = self.capture.retrieve()
+        if retv==False:
+            self.timer.stop()
+            return False
+            
+        video_time=self.capture.get(cv2.CAP_PROP_POS_MSEC)
+        
 
-        #_, frame = self.capture.read()
-        #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        #frame = cv2.flip(frame, 1)
-        img,karta=najdi_karto_video(frame)
+        
+        #img,karta=najdi_karto_video(frame)
 
-        self.popravi_sirino(self.ui.label_image_left,img)
-        self.display_image_on_label(self.ui.label_image_left,img)
-        self.display_image_on_label(self.ui.label_image_right,karta)
+        #self.TEngine.update(frame)
+        #img = self.TEngine.img
+        #karta = self.TEngine.karta
+
+        # ime = self.TEngine.ime
+        # self.ui.ime_karte.setText(ime)
+
+        frame = cv2.pyrDown(frame)
+        fgmask = self.fgbg.apply(frame)
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_DILATE, self.kernel)
+        frame=cv2.bitwise_and(frame,frame,mask=fgmask) 
+        
+        
+        self.popravi_sirino(self.ui.label_image_left,frame)
+        self.popravi_sirino(self.ui.label_image_bottom_left,fgmask)
+        self.display_image_on_label(self.ui.label_image_left,frame)
+        self.display_image_on_label(self.ui.label_image_bottom_left,fgmask)
+        
+        #self.popravi_sirino(self.ui.label_image_left,img)
+        #self.display_image_on_label(self.ui.label_image_left,img)
+        #self.display_image_on_label(self.ui.label_image_right,karta)
 
         end = time.time()
-        print(end - start)
+        
+        self.ui.video_msec_line.setText("{:.1f}".format(video_time/1000))
+        self.ui.function_time_line.setText("{:.3f}".format(end-start))
+        
 
         
 if __name__ == '__main__':

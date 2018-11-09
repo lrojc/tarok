@@ -334,21 +334,21 @@ def najdi_robove_1(img):
     #display_image3(gray,median,edges) 
     return edges
 
-def najdi_robove_2(img):
+def najdi_robove_gray(img):
     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     median = cv2.medianBlur(gray,11)
     thresh = cv2.adaptiveThreshold(median,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,15,5)
-    thresh = cv2.medianBlur(thresh,3)
-    kernel = np.ones((5,5),np.uint8)
-    thresh=cv2.dilate(thresh,kernel,iterations = 1)
-    thresh=cv2.erode(thresh,kernel,iterations = 1)
+    #thresh = cv2.medianBlur(thresh,3)
+    #kernel = np.ones((5,5),np.uint8)
+    #thresh=cv2.dilate(thresh,kernel,iterations = 1)
+    #thresh=cv2.erode(thresh,kernel,iterations = 1)
     im2, contours,hierarchy=cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE )
     cmax=0
     area_coeff=0.5
     for c in contours:
 
         tmp=cv2.contourArea(c)
-        if tmp>400:
+        if tmp>200:
             img_tmp=img.copy()
             epsilon=0.003*cv2.arcLength(c,True)
             approx=cv2.approxPolyDP(c,epsilon,True)
@@ -395,8 +395,8 @@ def najdi_robove_2(img):
     except UnboundLocalError:
         #print(tmp)
         #display_image3(img,gray,thresh)
+        
         return img,box,gray,thresh
-
 
 def poravnaj_ikono(img):
      # Poporavi najdeno
@@ -474,49 +474,42 @@ def poravnaj_ikono(img):
     #
     return icon
 
-
 def najdi_karto_video(img):
-    
-    #img = cv2.imread(directory + imagename) #, cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_COLOR)
+    img = cv2.pyrDown(img)
+    # poravnava_slike
     height, width, channels = img.shape
-
     new_width=800
     new_height=int(new_width/width*height)
-    #print(new_height)
 
-    
-    if height>width:
-        img = cv2.resize(img,(new_height,new_width), interpolation = cv2.INTER_CUBIC)
-    else:
-        img = cv2.resize(img,(new_width,new_height), interpolation = cv2.INTER_CUBIC)
-        rows,cols,d = img.shape
-        M = cv2.getRotationMatrix2D((400,400),90,1)
-        img = cv2.warpAffine(img,M,(rows,cols))
-        
-    img_original=img.copy()
-    img,pts,edges,thresh=najdi_robove_2(img)
-    pts1 = np.float32(pts)
-    
-    for x, y in pts1:
-        cv2.circle(img,(x,y),4,(0,255,0),-1)
-    
-    #print(imagename[:-6])
-    #print(pts1)
-    #print('./debug_images/' + imagename[:-4] + ".jpg")
+
     nova_visina=200
     nova_sirina=100
+    
+    # if height>width:
+    #     img = cv2.resize(img,(new_height,new_width), interpolation = cv2.INTER_CUBIC)
+    # else:
+    #     img = cv2.resize(img,(new_width,new_height), interpolation = cv2.INTER_CUBIC)
+    #     rows,cols,d = img.shape
+    #     M = cv2.getRotationMatrix2D((400,400),90,1)
+    #     img = cv2.warpAffine(img,M,(rows,cols))
+
+    img_original=img.copy()
+    img,pts,edges,thresh=najdi_robove_gray(img)
+
+    pts1 = np.float32(pts)
+    for x, y in pts1:
+        cv2.circle(img,(x,y),4,(0,255,0),-1)
+
     if((pts1[0,0]-pts1[1,0])**2+(pts1[0,1]-pts1[1,1])**2)> \
       ((pts1[2,0]-pts1[1,0])**2+(pts1[2,1]-pts1[1,1])**2): 
-       pts2 = np.float32([[0,nova_visina],[0,0],[nova_sirina,0],[nova_sirina,nova_visina]])
+        pts2 = np.float32([[0,nova_visina],[0,0],[nova_sirina,0],[nova_sirina,nova_visina]])
     else:
         pts2 = np.float32([[nova_sirina,nova_visina],[0,nova_visina],[0,0],[nova_sirina,0]])
+
     M = cv2.getPerspectiveTransform(pts1,pts2)
-    #icon2 = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
     icon = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
-    edges=cv2.cvtColor(edges,cv2.COLOR_GRAY2RGB)
-    thresh=cv2.cvtColor(thresh,cv2.COLOR_GRAY2RGB)
-    icon=poravnaj_ikono(icon)
-    #shrani_4_slike('./debug_images/' + imagename[:-4] + ".jpg",edges,img,icon2,icon)
+    icon = poravnaj_ikono(icon)
+
     return img,icon
 
 def najdi_karto_devel(directory,imagename):
@@ -532,7 +525,7 @@ def najdi_karto_devel(directory,imagename):
         img = cv2.warpAffine(img,M,(rows,cols))
         
     img_original=img.copy()
-    img,pts,edges,thresh=najdi_robove_2(img)
+    img,pts,edges,thresh=najdi_robove_gray(img)
     pts1 = np.float32(pts)
     
     for x, y in pts1:
@@ -570,7 +563,7 @@ def najdi_karto_devel2(directory,imagename):
         
     img_original=img.copy()
     
-    slika,tocke,edges=najdi_robove_2(img)
+    slika,tocke,edges=najdi_robove_gray(img)
     slika=slika.copy()
     
     N=4
@@ -602,7 +595,7 @@ def najdi_karto_devel2(directory,imagename):
         print("Stevilo crt je premajhno! -> " + str(len(lines)))
         
     pts1,robovi=vogali(lines)
-    #pts1=najdi_robove_2(img)
+    #pts1=najdi_robove_gray(img)
     
     img=narisi_crte(img,vse_crte,(0,0,255),1)
     img=narisi_crte(img,lines,(0,255,255),2)
@@ -859,92 +852,58 @@ def template_matching_znaki(directory,ends,maska,maska_imena):
             else:
                 print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "tarok" + detekcija)
 
-def template_matching_znaki_hsv(directory,ends,maska,maska_imena):
-    img_rgb = cv2.imread('maska.jpg')
-    img = cv2.cvtColor(img_rgb,cv2.COLOR_BGR2GRAY)
-    img2 = img.copy()
-    img_hsv = cv2.cvtColor(img_rgb,cv2.COLOR_BGR2HSV)
-    # img=img_hsv[:,:,2]  #img nastavljen na VALUE.
+def template_matching_video(template):
+    mask_name='maska.jpg'
+    img = cv2.imread(mask_name,0)
+    f = open(mask_name[:-4] + ".pckl", 'rb')
+    maska_imena = pickle.load(f);  f.close()
+    
     img_mask=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
-    #max_val=np.max(img[img_mask>0])
-    #img[img_mask>0]=np.uint8(max_val)
-    img=img_hsv[:,:,0]  #img sprmenjen na HUE!!!!!!
+    max_val=np.max(img[img_mask>0])
+    img[img_mask>0]=np.uint8(max_val)
     img2 = img.copy()
     methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
            'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
     meth=methods[4]
-    for file in os.listdir(directory):
-        filename = os.fsdecode(file)
-        if filename.endswith(ends):
-            img3 = img2.copy()
-            template_rgb = cv2.imread(directory + filename)
-            template_hsv = cv2.cvtColor(template_rgb,cv2.COLOR_BGR2HSV)
-            template = cv2.cvtColor(template_rgb,cv2.COLOR_BGR2GRAY)
-            template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
-                                                 cv2.THRESH_BINARY,17,2)
-            max_val=np.max(template[template_mask>0])
-            svetlost_karte=(template_mask>0).sum()/template_mask.size
-            # display_image(template)
-            if svetlost_karte>0.7:
-                det_ime=prepoznaj_platlc(template)
-                det_ime=det_ime + "xx"
-            else:
-                template = template_hsv[:,:,0]      #template spremenjen v HUE!!!!!!!
-                #template[template_mask>0]=np.uint8(max_val)
-                #template = cv2.medianBlur(template,3)
-                method = eval(meth)
-                w, h = template.shape[::-1]
-                res = cv2.matchTemplate(img,template,method)
-                template2=cv2.flip(template,-1) 
-                res2 = cv2.matchTemplate(img,template2,method)
+
+    #template = cv2.imread(directory + filename,0)
+    template=cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+                                        cv2.THRESH_BINARY,17,2)
+    max_val=np.max(template[template_mask>0])
+    svetlost_karte=(template_mask>0).sum()/template_mask.size
             
-                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                    if (np.min(res2[0])<np.min(res[0])):
-                        res=res2
-                else:
-                    if (np.max(res2[0])>np.max(res[0])):
-                        res=res
-
-                        
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                    top_left = min_loc
-                else:
-                    top_left = max_loc
-                bottom_right = (top_left[0] + w, top_left[1] + h)
-
-                cv2.rectangle(img3,top_left, bottom_right, 255, 2)
-                    
-                indeks=np.int32(round(top_left[0]/w))
-                det_ime=maska_imena[indeks]
+    if svetlost_karte>0.7:
+        det_ime=prepoznaj_platlc(template)
+        det_ime=det_ime + "_?"
+    else:
+        template[template_mask>0]=np.uint8(max_val)
+        template = cv2.medianBlur(template,3)
+        method = eval(meth)
+        w, h = template.shape[::-1]
                 
-            detekcija="\tOK"
-            if (det_ime[:-2] not in filename) and (svetlost_karte<=0.7):
-                detekcija= "\tdetektiran kot:\t" + det_ime
-                
-                plt.subplot(2,1,1),plt.plot(res[0])
-                plt.subplot(2,2,3), _plot_image_correct_color_(img3)
-                plt.xticks(), plt.yticks()
-                plt.axis([top_left[0],top_left[0]+w,top_left[1]+h,top_left[1]])
-                plt.title("Detektirano ime: " + det_ime )
-                plt.subplot(2,2,4)
-                plt.title(filename)
-                if np.sum(res-res2)==0:
-                    _plot_image_correct_color_(template2)
-                else:
-                    _plot_image_correct_color_(template)
-                plt.xticks([]), plt.yticks([])
-                plt.subplots_adjust(left=None, bottom=0.07, right=None, top=0.97, wspace=None, hspace=0.35)
-                plt.show()
+        res = cv2.matchTemplate(img,template,method)
+        template2=cv2.flip(template,-1) 
+        res2 = cv2.matchTemplate(img,template2,method)
+            
+        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+            if (np.min(res2[0])<np.min(res[0])):
+                res=res2
+        else:
+            if (np.max(res2[0])>np.max(res[0])):
+                res=res2
 
-            if "tarok" not in det_ime:
-                if svetlost_karte>0.7:
-                    #print(filename.ljust(20)  + "\tSvetlost: " + str(svetlost_karte) +  "\tplatelc" + detekcija)
-                    print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "platelc" + detekcija)
-                else:
-                    print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "barva" + detekcija)
-            else:
-                print(filename.ljust(20)  + "->\t" + det_ime.ljust(16) +  "tarok" + detekcija)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+            top_left = min_loc
+        else:
+            top_left = max_loc
+        bottom_right = (top_left[0] + w, top_left[1] + h)
+        cv2.rectangle(img,top_left, bottom_right, 255, 2)
+        indeks=np.int32(round(top_left[0]/w))
+        det_ime=maska_imena[indeks][:-2]
+                
+    return det_ime
 
 def pripravi_znake():
     ikone=['src_1_1.jpg','kara_1_1.jpg','pik_9_1.jpg','kriz_9_1.jpg']
@@ -1082,7 +1041,17 @@ def testiraj_znake():
         print(filename + "\t" + prepoznan)
         
         
+class TarokEngine:
+    def __init__(self):
+        print("Tarok Engine Started...")
 
+    def update(self,frame):
+        self.img,self.karta=najdi_karto_video(frame)
+        self.ime=template_matching_video(self.karta)
+        print(self.ime)
+        
+    
+        
 if __name__ == "__main__":
     #pripravi_ikone_in_masko()
     #testiraj_masko()

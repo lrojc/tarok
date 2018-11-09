@@ -374,8 +374,8 @@ def najdi_robove_2(img):
             if (tmp>cmax) and area_coeff<0.15: # mora biti tudi vecji od 0
                 cmax=tmp
                 cnt=c
-            else:
-                print(area_1,area_rect,area_coeff)
+            #else:
+                #print(area_1,area_rect,area_coeff)
                 #display_image(img_tmp)
             
     cv2.drawContours(img, contours, -1, (0,0,255))
@@ -393,8 +393,8 @@ def najdi_robove_2(img):
         return img,box,gray,thresh
 
     except UnboundLocalError:
-        print(tmp)
-        display_image3(img,gray,thresh)
+        #print(tmp)
+        #display_image3(img,gray,thresh)
         return img,box,gray,thresh
 
 
@@ -442,8 +442,9 @@ def poravnaj_ikono(img):
         leve = cv2.HoughLines(Gxm,2,np.pi/180,40)[0,0] #h/2)
         zgornje = cv2.HoughLines(Gym,2,np.pi/180,40)[0,0] #w/2)
     except TypeError:
-        display_image3(img_gray,Gx,Gy)
-        display_image4(GxM,GyM,Gxm,Gym)
+        #display_image3(img_gray,Gx,Gy)
+        #display_image4(GxM,GyM,Gxm,Gym)
+        print("TypeError in poravnaj_ikono")
         return img
 
     # print(desne)
@@ -473,6 +474,50 @@ def poravnaj_ikono(img):
     #
     return icon
 
+
+def najdi_karto_video(img):
+    
+    #img = cv2.imread(directory + imagename) #, cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_COLOR)
+    height, width, channels = img.shape
+
+    new_width=800
+    new_height=int(new_width/width*height)
+    #print(new_height)
+
+    
+    if height>width:
+        img = cv2.resize(img,(new_height,new_width), interpolation = cv2.INTER_CUBIC)
+    else:
+        img = cv2.resize(img,(new_width,new_height), interpolation = cv2.INTER_CUBIC)
+        rows,cols,d = img.shape
+        M = cv2.getRotationMatrix2D((400,400),90,1)
+        img = cv2.warpAffine(img,M,(rows,cols))
+        
+    img_original=img.copy()
+    img,pts,edges,thresh=najdi_robove_2(img)
+    pts1 = np.float32(pts)
+    
+    for x, y in pts1:
+        cv2.circle(img,(x,y),4,(0,255,0),-1)
+    
+    #print(imagename[:-6])
+    #print(pts1)
+    #print('./debug_images/' + imagename[:-4] + ".jpg")
+    nova_visina=200
+    nova_sirina=100
+    if((pts1[0,0]-pts1[1,0])**2+(pts1[0,1]-pts1[1,1])**2)> \
+      ((pts1[2,0]-pts1[1,0])**2+(pts1[2,1]-pts1[1,1])**2): 
+       pts2 = np.float32([[0,nova_visina],[0,0],[nova_sirina,0],[nova_sirina,nova_visina]])
+    else:
+        pts2 = np.float32([[nova_sirina,nova_visina],[0,nova_visina],[0,0],[nova_sirina,0]])
+    M = cv2.getPerspectiveTransform(pts1,pts2)
+    #icon2 = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
+    icon = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
+    edges=cv2.cvtColor(edges,cv2.COLOR_GRAY2RGB)
+    thresh=cv2.cvtColor(thresh,cv2.COLOR_GRAY2RGB)
+    icon=poravnaj_ikono(icon)
+    #shrani_4_slike('./debug_images/' + imagename[:-4] + ".jpg",edges,img,icon2,icon)
+    return img,icon
 
 def najdi_karto_devel(directory,imagename):
     
@@ -636,12 +681,12 @@ def empty_run2():
     names={}
     for file in os.listdir(directory):
         filename = os.fsdecode(file)
-#        filename = "pik_10_1.jpg"
+        # filename = "pik_10_1.jpg"
         if filename.endswith("_1.jpg"): # or filename.endswith("_2.jpg"): 
             print(filename)
             # Poporavi najdeno
             img = cv2.imread(directory + filename)
-            #poravnaj_ikono(img)
+            # poravnaj_ikono(img)
 
 def template_matching(directory,ends,maska,maska_imena):
     barva=['blue','green','red']

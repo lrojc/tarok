@@ -1044,13 +1044,201 @@ def testiraj_znake():
 class TarokEngine:
     def __init__(self):
         print("Tarok Engine Started...")
+        self.nova_visina=200
+        self.nova_sirina=100
 
     def update(self,frame):
         self.img,self.karta=najdi_karto_video(frame)
         self.ime=template_matching_video(self.karta)
         print(self.ime)
+
+    def najdi_karto_video(img):
+        img = cv2.pyrDown(img)
+        height, width, channels = img.shape
         
-    
+        nova_visina=self.nova_visina
+        nova_sirina=self.nova_sirina
+        
+        img_original=img.copy()
+        img,pts,edges,thresh=najdi_r
+        obove_gray(img) #najdi robove
+        
+        pts1 = np.float32(pts)
+        for x, y in pts1:
+            cv2.circle(img,(x,y),4,(0,255,0),-1)
+        
+        if((pts1[0,0]-pts1[1,0])**2+(pts1[0,1]-pts1[1,1])**2)> \
+          ((pts1[2,0]-pts1[1,0])**2+(pts1[2,1]-pts1[1,1])**2): 
+            pts2 = np.float32([[0,nova_visina],[0,0],[nova_sirina,0],[nova_sirina,nova_visina]])
+        else:
+            pts2 = np.float32([[nova_sirina,nova_visina],[0,nova_visina],[0,0],[nova_sirina,0]])
+
+        M = cv2.getPerspectiveTransform(pts1,pts2)
+        icon = cv2.warpPerspective(img_original,M,(nova_sirina,nova_visina))
+        icon = poravnaj_ikono(icon) #poravnaj ikono
+        
+        return img,icon
+
+    def poravnaj_ikono(img):
+        img_gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        # Prepare the kernels
+        #a1 = np.matrix([1, 1, 1]) #Prewitt
+        a1 = np.matrix([1, 1, 1, 1, 1]) #Prewitt 
+        #a1 = np.matrix([1, 2, 1]) #Sobel
+        #a1 = np.matrix([3, 10, 3]) #Scharr
+        #a2 = np.matrix([-1, 0, 1])
+        a2 = np.matrix([-1, -1, 0, 1, 1])
+        Kx = a1.T * a2
+        Ky = a2.T * a1
+        K=np.sum(np.abs(Kx))
+        
+        # Apply the Sobel operator
+        Gx = scipy.signal.convolve2d(img_gray, Kx, "same", "symm")
+        Gy = scipy.signal.convolve2d(img_gray, Ky, "same", "symm")
+        
+        GxM=np.zeros_like(img_gray) # desni rob
+        GyM=np.zeros_like(img_gray) # spodnji rob
+        Gxm=np.zeros_like(img_gray) # levi rob
+        Gym=np.zeros_like(img_gray) # zgornji rob
+        
+        GxM[Gx>K*25]=1
+        GyM[Gy>K*25]=1
+        Gxm[Gx<-K*25]=1
+        Gym[Gy<-K*25]=1
+
+        nova_visina=200
+        nova_sirina=100
+        try:
+            desne = cv2.HoughLines(GxM,2,np.pi/180,40)[0,0] #h/2)
+            spodnje = cv2.HoughLines(GyM,2,np.pi/180,40)[0,0] #w/2)
+            leve = cv2.HoughLines(Gxm,2,np.pi/180,40)[0,0] #h/2)
+            zgornje = cv2.HoughLines(Gym,2,np.pi/180,40)[0,0] #w/2)
+        except TypeError:
+            print("TypeError in poravnaj_ikono")
+            return img
+        
+        x0,y0 = presek(  leve, zgornje);  x1,y1 = presek( desne, zgornje)
+        x2,y2 = presek(  leve, spodnje);  x3,y3 = presek( desne, spodnje)
+        
+        pts1 = np.float32( [[x0,y0],[x1,y1],        [x2,y2],        [x3,y3]])
+        pts2 = np.float32( [[0,0],  [nova_sirina,0],[0,nova_visina],[nova_sirina,nova_visina]])
+        M = cv2.getPerspectiveTransform(pts1,pts2)
+        icon = cv2.warpPerspective(img,M,(nova_sirina,nova_visina))
+        return icon
+
+    def template_matching_video(template):
+        mask_name='maska.jpg'
+        img = cv2.imread(mask_name,0)
+        f = open(mask_name[:-4] + ".pckl", 'rb')
+        maska_imena = pickle.load(f);  f.close()
+        
+        img_mask=cv2.adaptiveThreshold(img,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,17,2)
+        max_val=np.max(img[img_mask>0])
+        img[img_mask>0]=np.uint8(max_val)
+        img2 = img.copy()
+        methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+               'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+        meth=methods[4]
+        
+        #template = cv2.imread(directory + filename,0)
+        template=cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        template_mask=cv2.adaptiveThreshold(template,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+                                            cv2.THRESH_BINARY,17,2)
+        max_val=np.max(template[template_mask>0])
+        svetlost_karte=(template_mask>0).sum()/template_mask.size
+                
+        if svetlost_karte>0.7:
+            det_ime=prepoznaj_platlc(template)
+            det_ime=det_ime + "_?"
+        else:
+            template[template_mask>0]=np.uint8(max_val)
+            template = cv2.medianBlur(template,3)
+            method = eval(meth)
+            w, h = template.shape[::-1]
+                    
+            res = cv2.matchTemplate(img,template,method)
+            template2=cv2.flip(template,-1) 
+            res2 = cv2.matchTemplate(img,template2,method)
+                
+            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                if (np.min(res2[0])<np.min(res[0])):
+                    res=res2
+            else:
+                if (np.max(res2[0])>np.max(res[0])):
+                    res=res2
+        
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                top_left = min_loc
+            else:
+                top_left = max_loc
+            bottom_right = (top_left[0] + w, top_left[1] + h)
+            cv2.rectangle(img,top_left, bottom_right, 255, 2)
+            indeks=np.int32(round(top_left[0]/w))
+            det_ime=maska_imena[indeks][:-2]
+                    
+        return det_ime
+
+    def prepoznaj_platlc(img_gray):
+        simboli=['src.jpg','kara.jpg','pik.jpg','kriz.jpg']
+        img_rgb=cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
+        odstotek_crne=np.sum(img_gray<60)/img_gray.size
+        # print(platli[i] + " Odstotek crne:" + str(odstotek_crne))
+        # print("Odstotek crne:" + str(odstotek_crne))
+        
+        if odstotek_crne<0.02:
+            barve=[0,1]
+        else:
+            barve=[2,3]
+            
+        max_val=0
+        for i in barve:
+            template_kandidat=cv2.imread('./' + simboli[i],0)
+            res = cv2.matchTemplate(img_gray,template_kandidat,cv2.TM_CCOEFF)
+            min_val1, max_val1, min_loc1, max_loc1 = cv2.minMaxLoc(res)
+            template_kandidat=cv2.flip(template_kandidat,-1) 
+            res = cv2.matchTemplate(img_gray,template_kandidat,cv2.TM_CCOEFF)
+            min_val2, max_val2, min_loc2, max_loc2 = cv2.minMaxLoc(res)
+            if max_val1<max_val2:
+                max_val1=max_val2
+            if max_val<max_val1:
+                max_val=max_val1
+                template=template_kandidat
+                simbol=simboli[i]
+                
+        w, h = template.shape[::-1]
+        threshold = 0.93
+        if(barve[0]==0):
+            if "src" in simbol:
+                vel_enega=w*h*1.15
+            else:
+                vel_enega=w*h*1.3
+        else:
+            if "pik" in simbol:
+                vel_enega=w*h*1.1
+            else:
+                vel_enega=w*h*1.05
+                
+        g=img_rgb[:,:,1]
+        g[g==255]=254
+        res = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
+        template=cv2.flip(template,-1) 
+        res2 = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
+        
+        loc = np.where( res >= threshold)
+        for pt in zip(*loc[::-1]):
+            cv2.rectangle(img_rgb, pt, (pt[0] + w, pt[1] + h), (0,255,0),  cv2.FILLED)
+            
+        loc = np.where( res2 >= threshold)
+        for pt in zip(*loc[::-1]):
+            cv2.rectangle(img_rgb, pt, (pt[0] + w, pt[1] + h), (0,255,0),  cv2.FILLED)
+            
+        g=img_rgb[:,:,1]
+        vsota=np.sum(g==255)
+        prepoznana_karta=(simbol[:-4] + "_" + str(int(round(vsota/vel_enega))))
+        #print(prepoznana_karta)
+        return prepoznana_karta
+
         
 if __name__ == "__main__":
     #pripravi_ikone_in_masko()

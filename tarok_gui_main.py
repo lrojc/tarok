@@ -8,7 +8,6 @@ from PyQt5.QtCore import pyqtSlot, QTimer
 from tarok import *
 from tarok_gui import Ui_MainWindow
 import qimage2ndarray
-import random
 import numpy as np
 import time
 import cv2
@@ -138,7 +137,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if retv==False:
             self.timer.stop()
             return False
-            
+        frame = cv2.pyrDown(frame)
+        
         video_time=self.capture.get(cv2.CAP_PROP_POS_MSEC)
         
 
@@ -152,16 +152,48 @@ class MainWindow(QtWidgets.QMainWindow):
         # ime = self.TEngine.ime
         # self.ui.ime_karte.setText(ime)
 
-        frame = cv2.pyrDown(frame)
-        fgmask = self.fgbg.apply(frame)
-        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_DILATE, self.kernel)
-        frame=cv2.bitwise_and(frame,frame,mask=fgmask) 
+        frame=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+
+        sbval=self.ui.spinBox_gauss.value()
+        if sbval>1:
+            frame = cv2.medianBlur(frame,sbval)
+
+        sbval=self.ui.spinBox_median.value()
+        if sbval>1:
+            frame = cv2.GaussianBlur(frame,(sbval,sbval),0)
+
+        sbval=self.ui.spinBox_morph.value()
+        if sbval>1:
+            kernel = np.ones((sbval,sbval),np.uint8)
+            frame = cv2.morphologyEx(frame, eval(self.ui.lineEdit_morph.text()), kernel)
+
+        sbval=self.ui.spinBox_gauss_2.value()
+        if sbval>1:
+            frame = cv2.medianBlur(frame,sbval)
+
+        sbval=self.ui.spinBox_median_2.value()
+        if sbval>1:
+            frame = cv2.GaussianBlur(frame,(sbval,sbval),0)
+
+        sbval=self.ui.spinBox_morph_2.value()
+        if sbval>1:
+            kernel = np.ones((sbval,sbval),np.uint8)
+            frame = cv2.morphologyEx(frame, eval(self.ui.lineEdit_morph_2.text()), kernel)
+
+            
+        self.test_edge_detection(frame)
+
+        # frame = cv2.pyrDown(frame)
+        # fgmask = self.fgbg.apply(frame)
+        # fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_DILATE, self.kernel)
+        # frame=cv2.bitwise_and(frame,frame,mask=fgmask)
         
         
-        self.popravi_sirino(self.ui.label_image_left,frame)
-        self.popravi_sirino(self.ui.label_image_bottom_left,fgmask)
-        self.display_image_on_label(self.ui.label_image_left,frame)
-        self.display_image_on_label(self.ui.label_image_bottom_left,fgmask)
+        # self.popravi_sirino(self.ui.label_image_left,frame)
+        # self.popravi_sirino(self.ui.label_image_bottom_left,fgmask)
+        # self.display_image_on_label(self.ui.label_image_left,frame)
+        # self.display_image_on_label(self.ui.label_image_bottom_left,fgmask)
+
         
         #self.popravi_sirino(self.ui.label_image_left,img)
         #self.display_image_on_label(self.ui.label_image_left,img)
@@ -171,7 +203,28 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.ui.video_msec_line.setText("{:.1f}".format(video_time/1000))
         self.ui.function_time_line.setText("{:.3f}".format(end-start))
+
+    def test_edge_detection(self,frame):
+        laplacian = cv2.Laplacian(frame,cv2.CV_64F)
+        laplacian = np.uint8(laplacian)
+                
+        scharrx = cv2.Sobel(frame,cv2.CV_64F,1,0,ksize=-1)
+        scharry = cv2.Sobel(frame,cv2.CV_64F,0,1,ksize=-1)
+        scharrxy = np.sqrt(scharrx**2 + scharry**2)
+        scharrxy = np.uint8(scharrxy)
+
+        sobelxy = cv2.Sobel(frame,cv2.CV_64F,1,1,ksize=5)
+        sobelxy = np.uint8(sobelxy)
+
+        self.popravi_sirino(self.ui.label_image_right,laplacian)
+        self.popravi_sirino(self.ui.label_image_left,frame)
+        self.popravi_sirino(self.ui.label_image_bottom_left,scharrxy)
+        self.popravi_sirino(self.ui.label_karta_1,sobelxy)
         
+        self.display_image_on_label(self.ui.label_image_right,laplacian)
+        self.display_image_on_label(self.ui.label_image_left,frame)
+        self.display_image_on_label(self.ui.label_image_bottom_left,scharrxy)
+        self.display_image_on_label(self.ui.label_karta_1,sobelxy)
 
         
 if __name__ == '__main__':

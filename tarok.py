@@ -342,7 +342,8 @@ def najdi_robove_gray(img):
     #kernel = np.ones((5,5),np.uint8)
     #thresh=cv2.dilate(thresh,kernel,iterations = 1)
     #thresh=cv2.erode(thresh,kernel,iterations = 1)
-    im2, contours,hierarchy=cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE )
+    #im2, contours,hierarchy=cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE ) # Since opencv 3.2 source image is not modified by this function.
+    contours,hierarchy=cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE )
     cmax=0
     area_coeff=0.5
     for c in contours:
@@ -952,7 +953,7 @@ def testiraj_masko():
     ikone_dir='./ikone2/'
     ends_with="_1.jpg"
     mask_name="maska.jpg"
-
+    
     f = open(mask_name[:-4] + ".pckl", 'rb')
     imena = pickle.load(f)
     f.close()
@@ -1245,3 +1246,4 @@ if __name__ == "__main__":
     #testiraj_masko()
     #testiraj_znake()
     empty_run()
+    pass
